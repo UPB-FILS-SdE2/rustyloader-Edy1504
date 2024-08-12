@@ -278,7 +278,7 @@ fn main() ->> Result<(), Box<dyn Error>> {
     exec(&args[1])?;
     Ok(())
 }*/
-
+/*
 use nix::libc::{sigaction, siginfo_t, SIGSEGV, SA_SIGINFO};
 use object::{Object, ObjectSegment};
 use std::error::Error;
@@ -414,4 +414,17 @@ fn main() -> Result<(), Box<dyn Error>> {
 
 lazy_static::lazy_static! {
     static ref SEGMENTS: Mutex<Vec<Segment>> = Mutex::new(Vec::new());
+}
+*/
+
+mod runner;
+
+fn main(){
+    let args: Vec<String> = std::env::args().collect();
+    if args.len() != 2{
+        eprintln!("Usage: {} <exevutable", args[0]);
+        std::process::exit(1);
+    }
+    let (base_address, entry_point) = runner::load_elf(args[1]);
+    runner::exec_run(base_address, entry_point);
 }
