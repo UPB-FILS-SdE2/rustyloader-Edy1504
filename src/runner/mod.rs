@@ -63,7 +63,7 @@ pub fn exec_run(base_address: usize, entry_point: usize) {
     }
 }
 */
-
+/*
 use nix::libc::{Elf32_Ehdr, Elf32_Phdr};
 use std::arch::asm;
 use std::env;
@@ -170,4 +170,119 @@ pub fn exec_run(base_address: usize, entry_point: usize) {
             in("eax") entry_point, in("ebx") env_address);
     }
 }
+*/
+use nix::libc::{Elf32_Ehdr, Elf32_Phdr, PF_R, PF_W, PF_X};
+use std::arch::asm;
+use std::fs::File;
+use std::io::Read;
+use std::os::unix::io::AsRawFd;
+use memmap::MmapOptions;
 
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct Elf32AuxV {
+    pub a_type: u32,
+    pub a_un: Elf32AuxVBindgenTy1,
+}
+
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct Elf32AuxVBindgenTy1 {
+    pub a_val: u32,
+}
+
+pub const AT_NULL: u32 = 0;
+pub const AT_PHDR: u32 = 3;
+pub const AT_BASE: u32 = 7;
+pub const AT_ENTRY: u32 = 9;
+pub const AT_EXECFN: u32 = 31;
+
+extern "C" {
+    static environ: *mut *mut u8;
+}
+
+pub fn load_elf(path: &str) -> (usize, usize) {
+    let file = File::open(path).expect("Failed to open file");
+    let metadata = file.metadata().expect("Failed to get file metadata");
+    let file_size = metadata.len() as usize;
+    let mmap = unsafe {
+        MmapOptions::new()
+            .len(file_size)
+            .map(&file)
+            .expect("Failed to map file")
+    };
+
+    let ehdr = unsafe { &*(mmap.as_ptr() as *const Elf32_Ehdr) };
+    let phdr = unsafe {
+        std::slice::from_raw_parts(
+            mmap.as_ptr().offset(ehdr.e_phoff as isize) as *const Elf32_Phdr,
+            ehdr.e_phnum as usize,
+        )
+    };
+
+    eprintln!("Segments");
+    eprintln!("#\taddress\t\tsize\t\toffset\tlength\tflags");
+    for (i, ph) in phdr.iter().enumerate() {
+        let size = ph.p_memsz.min(ph.p_filesz);
+        let length = ph.p_filesz;
+        let flags = format!(
+            "{}{}{}",
+            if ph.p_flags & PF_R != 0 { "r" } else { "-" },
+            if ph.p_flags & PF_W != 0 { "w" } else { "-" },
+            if ph.p_flags & PF_X != 0 { "x" } else { "-" }
+        );
+        eprintln!(
+            "{}\t0x{:08x}\t{}\t0x{:x}\t{}\t{}",
+            i, ph.p_vaddr, size, ph.p_offset, length, flags
+        );
+    }
+
+    let base_address = phdr.iter().map(|ph| ph.p_vaddr).min().unwrap() as usize;
+    let entry_point = ehdr.e_entry as usize;
+
+    eprintln!("Entry point\t0x{:x}", entry_point);
+    eprintln!("Base address\t0x{:x}", base_address);
+
+    (base_address, entry_point)
+}
+
+pub fn exec_run)base_address: usize, entry_point: usize) {
+    let ehdr = unsafe {&*(base_address as *const u8 as *const Elf32_Ehdr) };
+    let mut aux;
+
+    let env_address = unsafe {
+        let mut env = environ;
+        while !(*env).is_null(){
+            env = env.offset(1);
+        }
+        env = env.offset(1);
+        aux = &mut *(env as *mut u8 as *mut Elf32AuxV);
+        let argv = environ.offset(-(std::env::args().len() as isize + 2));
+        *argv.offset(2) = *argv.offset(1);
+        *argv.offset(1) = (std::env::args().len() -1 ) as *mut u8;
+        argv.offset(1);
+    };
+    while auxv.a_type != AT_NULL {
+        match aux.a_type {
+            AT_PHDR => auxv.a_un.a_val = base_address as u32 + (*ehdr).e_phoff,
+            AT_BASE => auxv.a_un.a_val = 0,
+            AT_ENTRY => auxv.a_un.a_val = entry_point as u32,
+            AT_EXECFN => auxv.a_un.a_val = 0,
+            _ => {}
+        }
+        aux = unsafe { &mut *(aux as *mut Elf32AuxV).offset(1) };
+    }
+    unsafe {
+        asm!(
+            "mov esp, ebx
+            xor ebx, ebx
+            xor ecx, ecx
+            xor edx, edx
+            xor ebp, ebp
+            xor esi, esi
+            xor edi, edi
+            jmp eax",
+            in("eax") entry_point, in("ebx") env_address
+        );
+    }
+}

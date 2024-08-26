@@ -417,7 +417,7 @@ lazy_static::lazy_static! {
 }
 */
 
-mod runner;
+/*mod runner;
 
 fn main(){
     let args: Vec<String> = std::env::args().collect();
@@ -427,4 +427,19 @@ fn main(){
     }
     let (base_address, entry_point) = runner::load_elf(args[1]);
     runner::exec_run(base_address, entry_point);
+}*/
+mod runner;
+
+use std::env;
+use runner::{load_elf, exec_run};
+
+fn main() {
+    let args: Vec<String> = env::args().collect();
+    if args.len() != 2 {
+        eprintln!("Usage: {} <Elf file path>", args[0]);
+        std::process::exit(1);
+    }
+    let elf_path = &args[1];
+    let (base_address, entry_point) = load_elf(elf_path);
+    exec_run(base_address, entry_point);
 }
